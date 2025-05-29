@@ -1,4 +1,5 @@
 export type PodcastLength = 'short' | 'medium' | 'long';
+export type LLMProvider = 'openai' | 'gemini';
 
 export interface PodcastData {
   id: string;

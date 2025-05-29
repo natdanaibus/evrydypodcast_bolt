@@ -1,46 +1,70 @@
-import { PodcastLength, PodcastData } from '../types';
+import { PodcastLength, PodcastData, LLMProvider } from '../types';
 import axios from 'axios';
 
 const LLM_API_KEY = import.meta.env.VITE_LLM_API_KEY;
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 const GEMINI_TTS_API_KEY = import.meta.env.VITE_GEMINI_TTS_API_KEY;
 
-const LLM_API_ENDPOINT = 'https://api.openai.com/v1/completions';
+const OPENAI_API_ENDPOINT = 'https://api.openai.com/v1/chat/completions';
+const GEMINI_API_ENDPOINT = 'https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent';
 const GEMINI_TTS_API_ENDPOINT = 'https://texttospeech.googleapis.com/v1/text:synthesize';
 
 export const generatePodcast = async (
   topic: string,
-  length: PodcastLength
+  length: PodcastLength,
+  provider: LLMProvider
 ): Promise<PodcastData> => {
-  if (!LLM_API_KEY || !GEMINI_TTS_API_KEY) {
+  if (!LLM_API_KEY || !GEMINI_TTS_API_KEY || !GEMINI_API_KEY) {
     throw new Error('API keys not configured. Please check your environment variables.');
   }
 
   try {
-    // Step 1: Generate script using OpenAI API
-    const scriptResponse = await axios.post(
-      LLM_API_ENDPOINT,
-      {
-        model: "gpt-3.5-turbo",
-        messages: [
-          {
-            role: "system",
-            content: "You are a professional podcast host creating engaging content."
-          },
-          {
-            role: "user",
-            content: generatePrompt(topic, length)
+    // Step 1: Generate script using selected LLM
+    let script: string;
+    
+    if (provider === 'openai') {
+      const scriptResponse = await axios.post(
+        OPENAI_API_ENDPOINT,
+        {
+          model: "gpt-3.5-turbo",
+          messages: [
+            {
+              role: "system",
+              content: "You are a professional podcast host creating engaging content."
+            },
+            {
+              role: "user",
+              content: generatePrompt(topic, length)
+            }
+          ]
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${LLM_API_KEY}`,
+            'Content-Type': 'application/json'
           }
-        ]
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${LLM_API_KEY}`,
-          'Content-Type': 'application/json'
         }
-      }
-    );
-
-    const script = scriptResponse.data.choices[0].message.content;
+      );
+      script = scriptResponse.data.choices[0].message.content;
+    } else {
+      const scriptResponse = await axios.post(
+        GEMINI_API_ENDPOINT,
+        {
+          contents: [{
+            parts: [{
+              text: generatePrompt(topic, length)
+            }]
+          }]
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${GEMINI_API_KEY}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      script = scriptResponse.data.candidates[0].content.parts[0].text;
+    }
 
     // Step 2: Convert script to audio using Google Cloud TTS API
     const audioResponse = await axios.post(
